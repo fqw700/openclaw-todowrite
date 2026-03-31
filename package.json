@@ -1,0 +1,28 @@
+{
+  "name": "@openclaw/todowrite",
+  "version": "1.0.0",
+  "description": "AI-managed task tracking for OpenClaw agents. Supports spec-driven workflows, session isolation, and file persistence.",
+  "main": "index.ts",
+  "type": "module",
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "todowrite",
+    "todo",
+    "task-tracking",
+    "ai-agent",
+    "spec-driven"
+  ],
+  "author": "OpulentiaAI",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpulentiaAI/todowrite"
+  },
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.0"
+  }
+}

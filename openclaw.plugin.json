@@ -1,0 +1,9 @@
+{
+  "id": "todowrite",
+  "name": "TodoWrite",
+  "description": "AI-managed task tracking list. Enables the agent to create, update, and display a structured todo list during complex tasks.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}
