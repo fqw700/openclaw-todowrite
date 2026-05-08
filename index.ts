@@ -13,6 +13,13 @@ interface TodoItem {
   section?: "requirements" | "design" | "tasks";
 }
 
+// Fix #6: Define explicit type for todo input
+interface TodoInput {
+  id?: string;
+  content?: string;
+  status?: "pending" | "in_progress" | "completed";
+}
+
 // Per-session todo lists, keyed by sessionKey or sessionId
 const sessionTodoStore = new Map<string, TodoItem[]>();
 
@@ -40,12 +47,15 @@ async function ensurePersistDir(): Promise<void> {
   } catch { /* ignore */ }
 }
 
+// Fix #5: Log persistence errors instead of silent ignore
 async function persistToFile(sessionId: string, todos: TodoItem[], nextId: number): Promise<void> {
   try {
     await ensurePersistDir();
     const filePath = path.join(PERSIST_DIR, `${sanitizeKey(sessionId)}.json`);
     await fs.writeFile(filePath, JSON.stringify({ todos, nextId }, null, 2), "utf-8");
-  } catch { /* silent */ }
+  } catch (err) {
+    console.error(`[todowrite] Failed to persist todos for session ${sessionId}:`, err);
+  }
 }
 
 async function loadFromFile(sessionId: string): Promise<{ todos: TodoItem[]; nextId: number } | null> {
@@ -251,18 +261,28 @@ export default definePluginEntry({
           }
 
           const action = (params.action as string)?.toLowerCase();
+          const validStatuses = ["pending", "in_progress", "completed"] as const;
 
           switch (action) {
             case "create": {
               if (!params.todos || !Array.isArray(params.todos) || params.todos.length === 0) {
                 return { content: [{ type: "text" as const, text: "❌ create requires a non-empty todos array with content." }] };
               }
-              const todos = (params.todos as any[]).map((t, i) => ({
+              // Fix #6: Use TodoInput type instead of any
+              const todos = (params.todos as TodoInput[]).map((t, i) => ({
                 id: t.id || generateId(i + 1),
                 content: t.content || `Task ${i + 1}`,
-                status: (t.status as TodoItem["status"]) || "pending",
+                status: t.status || "pending",
               }));
-              const ni = todos.length + 1;
+              // Fix #3: Calculate max ID to prevent conflicts
+              let maxIdNum = 0;
+              todos.forEach(t => {
+                const match = t.id.match(/todo_(\d+)/);
+                if (match) {
+                  maxIdNum = Math.max(maxIdNum, parseInt(match[1], 10));
+                }
+              });
+              const ni = maxIdNum + 1;
               await setSessionState(sid, todos, ni);
               // Sync active state
               activeSessionTodos = todos;
@@ -276,11 +296,12 @@ export default definePluginEntry({
               }
               const { todos, nextId: ni } = await getSessionState(sid);
               let curId = ni;
-              for (const t of params.todos as any[]) {
+              // Fix #6: Use TodoInput type instead of any
+              for (const t of params.todos as TodoInput[]) {
                 todos.push({
                   id: t.id || generateId(curId++),
                   content: t.content || "Untitled task",
-                  status: (t.status as TodoItem["status"]) || "pending",
+                  status: t.status || "pending",
                 });
               }
               await setSessionState(sid, todos, curId);
@@ -294,7 +315,8 @@ export default definePluginEntry({
                 return { content: [{ type: "text" as const, text: "❌ update requires todos array with id and fields to update." }] };
               }
               const { todos, nextId: ni } = await getSessionState(sid);
-              for (const t of params.todos as any[]) {
+              // Fix #6: Use TodoInput type instead of any
+              for (const t of params.todos as TodoInput[]) {
                 if (!t.id) {
                   return { content: [{ type: "text" as const, text: "❌ update requires each item to have an id." }] };
                 }
@@ -303,7 +325,18 @@ export default definePluginEntry({
                   return { content: [{ type: "text" as const, text: `❌ Todo item '${t.id}' not found.` }] };
                 }
                 if (t.content !== undefined) todos[idx].content = t.content;
-                if (t.status !== undefined) todos[idx].status = t.status as TodoItem["status"];
+                // Fix #4: Validate status value
+                if (t.status !== undefined) {
+                  if (!validStatuses.includes(t.status)) {
+                    return {
+                      content: [{
+                        type: "text" as const,
+                        text: `❌ Invalid status '${t.status}'. Valid values: pending, in_progress, completed`
+                      }]
+                    };
+                  }
+                  todos[idx].status = t.status;
+                }
               }
               await setSessionState(sid, todos, ni);
               activeSessionTodos = todos;
@@ -339,10 +372,11 @@ export default definePluginEntry({
               const todos: TodoItem[] = [];
               let idCounter = 1;
 
+              // Fix #1 & #2: Remove prefixes, let section headers handle categorization
               reqs.forEach(content => {
                 todos.push({
                   id: generateId(idCounter++),
-                  content: `Requirements: ${content}`,
+                  content,
                   status: "pending",
                   mode: "spec-driven",
                   section: "requirements"
@@ -352,7 +386,7 @@ export default definePluginEntry({
               designs.forEach(content => {
                 todos.push({
                   id: generateId(idCounter++),
-                  content: `Design: ${content}`,
+                  content,
                   status: "pending",
                   mode: "spec-driven",
                   section: "design"
